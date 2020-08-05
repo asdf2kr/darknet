@@ -266,6 +266,69 @@ LIB_API void Detector::free_image(image_t m)
     }
 }
 
+LIB_API std::vector<bbox_t> Detector::detectPlanar(float *img, float thresh, bool use_mean)
+{
+	detector_gpu_t &detector_gpu = *static_cast<detector_gpu_t *>(detector_gpu_ptr.get());
+	network &net = detector_gpu.net;
+#ifdef GPU
+	int old_gpu_index;
+	cudaGetDevice(&old_gpu_index);
+	if (cur_gpu_id != old_gpu_index)
+		cudaSetDevice(net.gpu_index);
+
+	net.wait_stream = wait_stream;    // 1 - wait CUDA-stream, 0 - not to wait
+#endif
+									  //std::cout << "net.gpu_index = " << net.gpu_index << std::endl;
+	layer l = net.layers[net.n - 1];
+	float *prediction = network_predict(net, img);
+	if (use_mean) {
+		memcpy(detector_gpu.predictions[detector_gpu.demo_index], prediction, l.outputs * sizeof(float));
+		mean_arrays(detector_gpu.predictions, NFRAMES, l.outputs, detector_gpu.avg);
+		l.output = detector_gpu.avg;
+		detector_gpu.demo_index = (detector_gpu.demo_index + 1) % NFRAMES;
+	}
+	//get_region_boxes(l, 1, 1, thresh, detector_gpu.probs, detector_gpu.boxes, 0, 0);
+	//if (nms) do_nms_sort(detector_gpu.boxes, detector_gpu.probs, l.w*l.h*l.n, l.classes, nms);
+	int nboxes = 0;
+	int letterbox = 0;
+	float hier_thresh = 0.5;
+	detection *dets = get_network_boxes(&net, net.w, net.h, thresh, hier_thresh, 0, 1, &nboxes, letterbox);
+	if (nms) do_nms_sort(dets, nboxes, l.classes, nms);
+
+	std::vector<bbox_t> bbox_vec;
+	for (int i = 0; i < nboxes; ++i) {
+		box b = dets[i].bbox;
+		int const obj_id = max_index(dets[i].prob, l.classes);
+		float const prob = dets[i].prob[obj_id];
+
+		if (prob > thresh)
+		{
+			bbox_t bbox;
+			bbox.x = std::max((double)0, (b.x - b.w / 2.) * net.w);
+			bbox.y = std::max((double)0, (b.y - b.h / 2.) * net.h);
+			bbox.w = b.w * net.w;
+			bbox.h = b.h * net.h;
+			bbox.obj_id = obj_id;
+			bbox.prob = prob;
+			bbox.track_id = 0;
+			bbox.frames_counter = 0;
+			bbox.x_3d = NAN;
+			bbox.y_3d = NAN;
+			bbox.z_3d = NAN;
+
+			bbox_vec.push_back(bbox);
+		}
+	}
+
+	free_detections(dets, nboxes);
+
+#ifdef GPU
+	if (cur_gpu_id != old_gpu_index)
+		cudaSetDevice(old_gpu_index);
+#endif
+	return bbox_vec;
+}
+
 LIB_API std::vector<bbox_t> Detector::detect(image_t img, float thresh, bool use_mean)
 {
     detector_gpu_t &detector_gpu = *static_cast<detector_gpu_t *>(detector_gpu_ptr.get());
