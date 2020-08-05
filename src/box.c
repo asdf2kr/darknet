@@ -862,6 +862,53 @@ void do_nms(box *boxes, float **probs, int total, int classes, float thresh)
         }
     }
 }
+#include <math.h>
+// reference: https://github.com/DocF/Soft-NMS/blob/master/soft_nms.py
+void diou_soft_nms(detection *dets, int total, int classes, float thresh, NMS_KIND nms_kind, float beta1)
+{
+	int i, j, k;
+	k = total - 1;
+	for (i = 0; i <= k; ++i) {
+		if (dets[i].objectness == 0) {
+			detection swap = dets[i];
+			dets[i] = dets[k];
+			dets[k] = swap;
+			--k;
+			--i;
+		}
+	}
+	total = k + 1;
+
+	for (k = 0; k < classes; ++k) {
+		for (i = 0; i < total; ++i) {
+			dets[i].sort_class = k;
+		}
+		qsort(dets, total, sizeof(detection), nms_comparator_v3);
+		for (i = 0; i < total; ++i)
+		{
+			// box_iou(boxes[i], boxes[j])
+			if (dets[i].prob[k] == 0) continue;
+			box a = dets[i].bbox;
+			for (j = i + 1; j < total; ++j) {
+				box b = dets[j].bbox;
+				float score = box_diounms(a, b, beta1);
+				if (score > thresh) {
+						if(nms_kind == SOFT_GAUSSIAN_NMS)
+							dets[j].prob[k] = exp(-(score * score) / beta1);
+						else if (nms_kind == SOFT_NMS) {
+							dets[j].prob[k] -= score;
+						}
+						else {
+							dets[j].prob[k] = 0;
+						}
+				}
+			}
+
+			//if ((nms_kind == CORNERS_NMS) && (dets[i].points != (YOLO_CENTER | YOLO_LEFT_TOP | YOLO_RIGHT_BOTTOM)))
+			//    dets[i].prob[k] = 0;
+		}
+	}
+}
 
 // https://github.com/Zzh-tju/DIoU-darknet
 // https://arxiv.org/abs/1911.08287

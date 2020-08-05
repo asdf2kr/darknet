@@ -466,6 +466,8 @@ layer parse_yolo(list *options, size_params params)
     else {
         if (strcmp(nms_kind, "greedynms") == 0) l.nms_kind = GREEDY_NMS;
         else if (strcmp(nms_kind, "diounms") == 0) l.nms_kind = DIOU_NMS;
+		else if (strcmp(nms_kind, "softnms") == 0) l.nms_kind = SOFT_NMS;
+		else if (strcmp(nms_kind, "softnmsG") == 0) l.nms_kind = SOFT_GAUSSIAN_NMS;
         else l.nms_kind = DEFAULT_NMS;
         printf("nms_kind: %s (%d), beta = %f \n", nms_kind, l.nms_kind, l.beta_nms);
     }
