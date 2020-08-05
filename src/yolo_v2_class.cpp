@@ -295,8 +295,8 @@ LIB_API std::vector<bbox_t> Detector::detectPlanar(float *img, float thresh, boo
 	detection *dets = get_network_boxes(&net, net.w, net.h, thresh, hier_thresh, 0, 1, &nboxes, letterbox);
 	
 	if (nms) {
-		if (l.nms_kind == GREEDY_NMS || l.nms_kind == DEFAULT_NMS)
-			do_nms_sort(dets, nboxes, l.classes, nms);
+		if (l.nms_kind == GREEDY_NMS || l.nms_kind == DEFAULT_NMS || l.nms_kind == SOFT_NMS || l.nms_kind == SOFT_GAUSSIAN_NMS)
+			do_basic_nms_sort(dets, nboxes, l.classes, nms, l.nms_kind);
 		else {
 			diou_soft_nms(dets, nboxes, l.classes, nms, l.nms_kind, l.beta_nms);
 		}

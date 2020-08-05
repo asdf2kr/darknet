@@ -862,6 +862,50 @@ void do_nms(box *boxes, float **probs, int total, int classes, float thresh)
         }
     }
 }
+// https://github.com/bharatsingh430/soft-nms/
+void do_basic_nms_sort(detection *dets, int total, int classes, float thresh, NMS_KIND nms_kind)
+{
+	int i, j, k;
+	k = total - 1;
+	for (i = 0; i <= k; ++i) {
+		if (dets[i].objectness == 0) {
+			detection swap = dets[i];
+			dets[i] = dets[k];
+			dets[k] = swap;
+			--k;
+			--i;
+		}
+	}
+	total = k + 1;
+
+	for (k = 0; k < classes; ++k) {
+		for (i = 0; i < total; ++i) {
+			dets[i].sort_class = k;
+		}
+		qsort(dets, total, sizeof(detection), nms_comparator_v3);
+		for (i = 0; i < total; ++i) {
+			//printf("  k = %d, \t i = %d \n", k, i);
+			if (dets[i].prob[k] == 0) continue;
+			box a = dets[i].bbox;
+			for (j = i + 1; j < total; ++j) {
+				box b = dets[j].bbox;
+				float score = box_iou(a, b);
+				if (score > thresh) {
+					if (nms_kind == SOFT_GAUSSIAN_NMS)
+						dets[j].prob[k] *= exp(-(score * score) / 0.5);
+					else if (nms_kind == SOFT_NMS) {
+						dets[j].prob[k] *= (1 - score);
+					}
+					else {
+						dets[j].prob[k] = 0;
+					}
+				}
+			}
+		}
+	}
+}
+
+
 #include <math.h>
 // reference: https://github.com/DocF/Soft-NMS/blob/master/soft_nms.py
 void diou_soft_nms(detection *dets, int total, int classes, float thresh, NMS_KIND nms_kind, float beta1)
@@ -891,12 +935,13 @@ void diou_soft_nms(detection *dets, int total, int classes, float thresh, NMS_KI
 			box a = dets[i].bbox;
 			for (j = i + 1; j < total; ++j) {
 				box b = dets[j].bbox;
+		
 				float score = box_diounms(a, b, beta1);
 				if (score > thresh) {
-						if(nms_kind == SOFT_GAUSSIAN_NMS)
-							dets[j].prob[k] = exp(-(score * score) / beta1);
-						else if (nms_kind == SOFT_NMS) {
-							dets[j].prob[k] -= score;
+						if(nms_kind == SOFT_GAUSSIAN_NMS_D)
+							dets[j].prob[k] *= exp(-(score * score) / 0.5);
+						else if (nms_kind == SOFT_NMS_D) {
+							dets[j].prob[k] *= (1 - score);
 						}
 						else {
 							dets[j].prob[k] = 0;
